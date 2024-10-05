@@ -1,0 +1,9 @@
+asyncpg
+aiohttp
+tenacity
+python-dotenv
+APScheduler
+alembic
+psycopg2
+pydantic==1.10.12
+lotus-python

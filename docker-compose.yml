@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    env_file:
+      - .env.prod
+    depends_on:
+      - db
+    restart: always
+    volumes:
+      - ./app:/app
+    ports:
+      - "8000:8000"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: mydatabase
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+      - ./alembic/versions:/alembic/versions
+    restart: always
+    ports:
+      - "5432:5432"
+
+volumes:
+  db_data:
