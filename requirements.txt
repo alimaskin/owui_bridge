@@ -7,3 +7,4 @@ alembic
 psycopg2
 pydantic==1.10.12
 lotus-python
+python-dateutil

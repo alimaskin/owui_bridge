@@ -1,6 +1,6 @@
 # app/sender.py
 import asyncio
-import lotus  # Импортируем SDK
+import lotus
 from app.config import LOTUS_API_KEY, LOTUS_API_URL
 from concurrent.futures import ThreadPoolExecutor
 from app.models import Event
@@ -13,20 +13,20 @@ from tenacity import (
 )
 from datetime import datetime
 from decimal import Decimal
+from dateutil.parser import parse
 
-# Настройка логирования
-logging.basicConfig(level=logging.INFO)
-
+logging.basicConfig(level=logging.DEBUG)  # Устанавливаем уровень логирования на DEBUG
 
 class LotusClient:
     def __init__(self):
         self.api_key = LOTUS_API_KEY
-        print(f"API Key: {self.api_key}")  # Выводим API ключ для проверки
-        self.host = LOTUS_API_URL  # Базовый URL без /api
-        lotus.api_key = self.api_key  # Устанавливаем API ключ для SDK
-        lotus.host = self.host  # Устанавливаем хост для SDK
-        lotus.debug = False  # Включите режим отладки, если необходимо
-        self.executor = ThreadPoolExecutor(max_workers=5)  # Создаём пул потоков для выполнения синхронных вызовов
+        print(f"API Key: {self.api_key}")
+        self.host = LOTUS_API_URL
+        lotus.api_key = self.api_key
+        lotus.host = self.host
+        lotus.debug = True  # Включаем режим отладки
+        lotus.sync_mode = True  # Включаем синхронный режим
+        self.executor = ThreadPoolExecutor(max_workers=5)
 
     async def close(self):
         self.executor.shutdown(wait=True)
@@ -34,34 +34,60 @@ class LotusClient:
     @retry(
         stop=stop_after_attempt(5),
         wait=wait_exponential(multiplier=1, min=4, max=10),
-        retry=retry_if_exception_type(Exception)  # Обработка всех исключений
+        retry=retry_if_exception_type(Exception)
     )
     async def track_event(self, event_data):
-        # Создаём экземпляр модели Event
+        print(f"event_data['created_at']: {event_data['created_at']}, type: {type(event_data['created_at'])}")
+
+        if isinstance(event_data['created_at'], datetime):
+            time_created = event_data['created_at']
+        else:
+            try:
+                time_created = parse(event_data['created_at'])
+            except Exception as e:
+                logging.error(f"Error parsing 'created_at': {event_data['created_at']} - {e}")
+                raise e
+
+        # Проверяем и преобразуем свойства
+        properties = {}
+        if event_data.get('total_cost') is not None:
+            properties['total_cost'] = float(event_data.get('total_cost'))
+        if event_data.get('calculated_total_cost') is not None:
+            properties['calculated_total_cost'] = float(event_data.get('calculated_total_cost'))
+
+        # Создаём экземпляр события
         event = Event(
-            customer_id=event_data['user_id'],
+            customer_id=str(event_data['user_id']),
             event_name='api_call',
-            properties={
-                "total_cost": event_data.get('total_cost'),
-                "calculated_total_cost": event_data.get('calculated_total_cost')
-            },
+            properties=properties,
             idempotency_id=str(event_data['observe_id']),
-            time_created=datetime.fromisoformat(event_data['created_at'].replace("Z", "+00:00"))
-            # Преобразуем строку в datetime
+            time_created=time_created
         )
+
+        # Фильтруем None значения в properties
+        event.properties = {k: v for k, v in event.properties.items() if v is not None}
+
+        # Проверяем, что все поля заполнены
+        if not event.customer_id:
+            logging.error("customer_id is missing or empty.")
+        if not event.idempotency_id:
+            logging.error("idempotency_id is missing or empty.")
 
         # Определяем функцию для вызова SDK
         def send_event():
             try:
-                response = lotus.track_event(
-                    customer_id=event.customer_id,
-                    event_name=event.event_name,
-                    properties=event.properties,
-                    idempotency_id=event.idempotency_id,
-                    time_created=event.time_created.isoformat()  # SDK ожидает строку ISO формата
-                )
+                event_payload = {
+                    "customer_id": event.customer_id,
+                    "event_name": event.event_name,
+                    "properties": event.properties,
+                    "idempotency_id": event.idempotency_id,
+                    "time_created": event.time_created.isoformat()
+                }
+                logging.debug(f"Event payload: {event_payload}")
+                response = lotus.track_event(**event_payload)
                 return response
             except Exception as e:
+                logging.error(f"Exception in send_event: {e}")
                 raise e
 
         # Выполняем синхронный вызов в пуле потоков

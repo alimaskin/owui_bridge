@@ -4,6 +4,7 @@ from app.db import Database
 from app.sender import LotusClient
 import logging
 from datetime import datetime
+import traceback
 
 async def transfer_data(db: Database, lotus: LotusClient):
     try:
@@ -28,6 +29,7 @@ async def transfer_data(db: Database, lotus: LotusClient):
             # Реализация DLQ или другой логики обработки неудачных отправок
     except Exception as e:
         logging.error(f"Unexpected error during transfer: {e}")
+        traceback.print_exc()
 
 async def periodic_transfer(db: Database, lotus: LotusClient, interval_seconds=60):
     while True:
@@ -35,4 +37,5 @@ async def periodic_transfer(db: Database, lotus: LotusClient, interval_seconds=6
             await transfer_data(db, lotus)
         except Exception as e:
             logging.error(f"Unexpected error during transfer: {e}")
+            traceback.print_exc()
         await asyncio.sleep(interval_seconds)
