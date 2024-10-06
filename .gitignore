@@ -1,7 +1,6 @@
 .env
 .env.prod
-venv/
+.venv/
 __pycache__/
 *.pyc
-alembic/versions/
-
+.idea/
