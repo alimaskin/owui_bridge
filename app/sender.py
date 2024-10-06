@@ -1,4 +1,4 @@
-# app/sender.py
+
 import asyncio
 import lotus
 from app.config import LOTUS_API_KEY, LOTUS_API_URL
@@ -15,7 +15,7 @@ from datetime import datetime
 from decimal import Decimal
 from dateutil.parser import parse
 
-logging.basicConfig(level=logging.DEBUG)  # Устанавливаем уровень логирования на DEBUG
+logging.basicConfig(level=logging.DEBUG)
 
 class LotusClient:
     def __init__(self):
@@ -25,7 +25,7 @@ class LotusClient:
         lotus.api_key = self.api_key
         lotus.host = self.host
         lotus.debug = True  # Включаем режим отладки
-        lotus.sync_mode = True  # Включаем синхронный режим
+        lotus.sync_mode = False  # Включаем синхронный режим
         self.executor = ThreadPoolExecutor(max_workers=5)
 
     async def close(self):
@@ -76,12 +76,15 @@ class LotusClient:
         # Определяем функцию для вызова SDK
         def send_event():
             try:
+                # Форматируем time_created
+                time_created_formatted = event.time_created.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+
                 event_payload = {
                     "customer_id": event.customer_id,
                     "event_name": event.event_name,
                     "properties": event.properties,
                     "idempotency_id": event.idempotency_id,
-                    "time_created": event.time_created.isoformat()
+                    "time_created": time_created_formatted
                 }
                 logging.debug(f"Event payload: {event_payload}")
                 response = lotus.track_event(**event_payload)
