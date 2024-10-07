@@ -19,7 +19,6 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade():
-    print("Running upgrade migration df27dccb688e")
     try:
         op.create_table(
             'transfer_state',
@@ -30,7 +29,6 @@ def upgrade():
             "INSERT INTO transfer_state (last_created_at) VALUES ('1970-01-01T00:00:00Z')"
         )
     except Exception as e:
-        print(f"Migration failed: {e}")
         raise
 
 def downgrade():

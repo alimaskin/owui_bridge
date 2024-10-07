@@ -26,8 +26,6 @@ load_dotenv()
 # access to the values within the .ini file in use.
 config = context.config
 
-print("env.py is being executed.")
-
 # Interpret the config file for Python logging.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -37,7 +35,6 @@ target_metadata = Base.metadata
 
 def run_migrations_offline():
     """Run migrations in 'offline' mode."""
-    print("Running migrations offline.")
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
         url=url,
@@ -48,7 +45,6 @@ def run_migrations_offline():
 
     with context.begin_transaction():
         context.run_migrations()
-    print("Offline migrations completed.")
 
 def do_run_migrations(connection):
     """Функция для выполнения миграций."""
@@ -64,7 +60,6 @@ def do_run_migrations(connection):
 
 async def run_migrations_online():
     """Run migrations in 'online' mode."""
-    print("Running migrations online.")
     connectable = AsyncEngine(
         engine_from_config(
             config.get_section(config.config_ini_section),
@@ -76,13 +71,10 @@ async def run_migrations_online():
 
     async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
-        print("Migrations completed.")
 
     await connectable.dispose()
 
-print("Alembic migration started.")
 if context.is_offline_mode():
     run_migrations_offline()
 else:
     asyncio.run(run_migrations_online())
-print("Alembic migration finished.")
