@@ -1,11 +1,23 @@
+# alembic/env.py
+
+import sys
 import os
+import asyncio
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from alembic import context
+
+# Добавляем корневую директорию проекта в sys.path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from app.models import Base  # Убедитесь, что путь правильный
+
 from dotenv import load_dotenv
+
 
 # Загружаем переменные из .env
 load_dotenv()
@@ -14,46 +26,63 @@ load_dotenv()
 # access to the values within the .ini file in use.
 config = context.config
 
-print(f"Config file in use: {config.config_file_name}")
+print("env.py is being executed.")
 
 # Interpret the config file for Python logging.
-# This line sets up loggers basically.
-fileConfig(config.config_file_name)
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
 
-# Add your model's MetaData object here
-# for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
-target_metadata = None  # Если вы используете SQLAlchemy ORM
-
-# Получение строки подключения из переменных окружения
-config.set_main_option('sqlalchemy.url', os.getenv('DATABASE_URL'))
+# Устанавливаем target_metadata для отслеживания моделей
+target_metadata = Base.metadata
 
 def run_migrations_offline():
     """Run migrations in 'offline' mode."""
+    print("Running migrations offline.")
     url = config.get_main_option("sqlalchemy.url")
     context.configure(
-        url=url, target_metadata=target_metadata, literal_binds=True, dialect_opts={"paramstyle": "named"}
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+    )
+
+    with context.begin_transaction():
+        context.run_migrations()
+    print("Offline migrations completed.")
+
+def do_run_migrations(connection):
+    """Функция для выполнения миграций."""
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        compare_server_default=True
     )
 
     with context.begin_transaction():
         context.run_migrations()
 
-def run_migrations_online():
+async def run_migrations_online():
     """Run migrations in 'online' mode."""
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
+    print("Running migrations online.")
+    connectable = AsyncEngine(
+        engine_from_config(
+            config.get_section(config.config_ini_section),
+            prefix='sqlalchemy.',
+            poolclass=pool.NullPool,
+            future=True,
+        )
     )
 
-    with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+    async with connectable.connect() as connection:
+        await connection.run_sync(do_run_migrations)
+        print("Migrations completed.")
 
-        with context.begin_transaction():
-            context.run_migrations()
+    await connectable.dispose()
 
+print("Alembic migration started.")
 if context.is_offline_mode():
     run_migrations_offline()
 else:
-    run_migrations_online()
+    asyncio.run(run_migrations_online())
+print("Alembic migration finished.")
