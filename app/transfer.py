@@ -1,12 +1,14 @@
 # app/transfer.py
-import asyncio
+
 from app.db import Database
-from app.sender import LotusClient
+from app.utils import make_json_serializable
 import logging
 from datetime import datetime
-import traceback
+from app.models import EventStatus
+import uuid
 
-async def transfer_data(db: Database, lotus: LotusClient):
+
+async def transfer_data(db: Database):
     try:
         last_created_at = await db.get_last_created_at()
         logging.info(f"Last created_at: {last_created_at}")
@@ -15,27 +17,34 @@ async def transfer_data(db: Database, lotus: LotusClient):
         logging.info(f"Fetched {len(events)} new events.")
 
         if not events:
+            logging.info("No new events to transfer.")
             return
 
-        # Отправляем батч событий
-        try:
-            response = await lotus.track_events_batch(events)
-            # Проверка ответа и логика обновления состояния
-            latest_created_at = max(event['created_at'] for event in events)
-            await db.update_last_created_at(latest_created_at)
-            logging.info(f"Updated last_created_at to {latest_created_at}")
-        except Exception as e:
-            logging.error(f"Error sending batch events: {e}")
-            # Реализация DLQ или другой логики обработки неудачных отправок
+        # Сохраняем события в таблицу event_status
+        logging.info("Saving events to event_status...")
+        async with db.write_session_maker() as session:
+            async with session.begin():
+                for event_data in events:
+                    event_id = str(uuid.uuid4())
+
+                    # Преобразуем event_data в JSON-сериализуемый формат
+                    serializable_data = make_json_serializable(event_data)
+                    logging.debug(f"Serializable event_data: {serializable_data}")
+
+                    event_status = EventStatus(
+                        event_id=event_id,
+                        event_data=serializable_data,
+                        status='new'
+                    )
+                    session.add(event_status)
+            await session.commit()
+            logging.info("Events saved to event_status.")
+
+        # Обновляем last_created_at после успешного сохранения событий
+        latest_created_at = max(event['created_at'] for event in events)
+        await db.update_last_created_at(latest_created_at)
+        logging.info(f"Updated last_created_at to {latest_created_at}")
+
     except Exception as e:
         logging.error(f"Unexpected error during transfer: {e}")
-        traceback.print_exc()
-
-async def periodic_transfer(db: Database, lotus: LotusClient, interval_seconds=60):
-    while True:
-        try:
-            await transfer_data(db, lotus)
-        except Exception as e:
-            logging.error(f"Unexpected error during transfer: {e}")
-            traceback.print_exc()
-        await asyncio.sleep(interval_seconds)
+        raise e
